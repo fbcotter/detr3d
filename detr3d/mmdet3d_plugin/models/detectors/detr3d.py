@@ -1,10 +1,15 @@
 import torch
 
+from os import path as osp
+import mmcv
+from mmcv.parallel import DataContainer as DC
 from mmcv.runner import force_fp32, auto_fp16
 from mmdet.models import DETECTORS
 from mmdet3d.core import bbox3d2result
 from mmdet3d.models.detectors.mvx_two_stage import MVXTwoStageDetector
+from mmdet3d.models import SingleStageMono3DDetector
 from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
+from mmdet3d.core import (CameraInstance3DBoxes, bbox3d2result, show_multi_modality_result)
 
 
 @DETECTORS.register_module()
@@ -33,6 +38,8 @@ class Detr3D(MVXTwoStageDetector):
                              img_backbone, pts_backbone, img_neck, pts_neck,
                              pts_bbox_head, img_roi_head, img_rpn_head,
                              train_cfg, test_cfg, pretrained)
+        self.grid_mask = GridMask(True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7)
+        self.use_grid_mask = use_grid_mask
         self.grid_mask = GridMask(True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7)
         self.use_grid_mask = use_grid_mask
 
@@ -153,7 +160,7 @@ class Detr3D(MVXTwoStageDetector):
                                             gt_bboxes_ignore)
         losses.update(losses_pts)
         return losses
-    
+
     def forward_test(self, img_metas, img=None, **kwargs):
         for var, name in [(img_metas, 'img_metas')]:
             if not isinstance(var, list):
@@ -169,6 +176,7 @@ class Detr3D(MVXTwoStageDetector):
 
     def simple_test_pts(self, x, img_metas, rescale=False):
         """Test function of point cloud branch."""
+        #  import ipdb; ipdb.set_trace()
         outs = self.pts_bbox_head(x, img_metas)
         bbox_list = self.pts_bbox_head.get_bboxes(
             outs, img_metas, rescale=rescale)
@@ -177,7 +185,7 @@ class Detr3D(MVXTwoStageDetector):
             for bboxes, scores, labels in bbox_list
         ]
         return bbox_results
-    
+
     def simple_test(self, img_metas, img=None, rescale=False):
         """Test function without augmentaiton."""
         img_feats = self.extract_feat(img=img, img_metas=img_metas)
@@ -214,3 +222,49 @@ class Detr3D(MVXTwoStageDetector):
         for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
             result_dict['pts_bbox'] = pts_bbox
         return bbox_list
+
+    def show_results(self, data, result, out_dir, show=False, score_thr=None):
+        """Results visualization.
+
+        Args:
+            data (list[dict]): Input images and the information of the sample.
+            result (list[dict]): Prediction results.
+            out_dir (str): Output directory of visualization result.
+            show (bool, optional): Determines whether you are
+                going to show result by open3d.
+                Defaults to False.
+            TODO: implement score_thr of single_stage_mono3d.
+            score_thr (float, optional): Score threshold of bounding boxes.
+                Default to None.
+                Not implemented yet, but it is here for unification.
+        """
+        for batch_id in range(len(result)):
+            if isinstance(data['img_metas'][0], DC):
+                img_filename = data['img_metas'][0]._data[0][batch_id][
+                    'filename']
+                cam2img = data['img_metas'][0]._data[0][batch_id]['cam2img']
+            elif mmcv.is_list_of(data['img_metas'][0], dict):
+                img_filename = data['img_metas'][0][batch_id]['filename']
+                cam2img = data['img_metas'][0][batch_id]['cam2img']
+            else:
+                ValueError(
+                    f"Unsupported data type {type(data['img_metas'][0])} "
+                    f'for visualization!')
+            img = mmcv.imread(img_filename)
+            file_name = osp.split(img_filename)[-1].split('.')[0]
+
+            assert out_dir is not None, 'Expect out_dir, got none.'
+
+            pred_bboxes = result[batch_id]['img_bbox']['boxes_3d']
+            assert isinstance(pred_bboxes, CameraInstance3DBoxes), \
+                f'unsupported predicted bbox type {type(pred_bboxes)}'
+
+            show_multi_modality_result(
+                img,
+                None,
+                pred_bboxes,
+                cam2img,
+                out_dir,
+                file_name,
+                'camera',
+                show=show)

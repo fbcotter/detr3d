@@ -86,7 +86,7 @@ model = dict(
             pc_range=point_cloud_range,
             max_num=300,
             voxel_size=voxel_size,
-            num_classes=10), 
+            num_classes=10),
         positional_encoding=dict(
             type='SinePositionalEncoding',
             num_feats=128,
@@ -110,11 +110,11 @@ model = dict(
             type='HungarianAssigner3D',
             cls_cost=dict(type='FocalLossCost', weight=2.0),
             reg_cost=dict(type='BBox3DL1Cost', weight=0.25),
-            iou_cost=dict(type='IoUCost', weight=0.0), # Fake cost. This is just to make it compatible with DETR head. 
+            iou_cost=dict(type='IoUCost', weight=0.0), # Fake cost. This is just to make it compatible with DETR head.
             pc_range=point_cloud_range))))
 
-dataset_type = 'NuScenesDataset'
-data_root = 'data/nuscenes/'
+dataset_type = 'WayveDataset'
+data_root = 'data/wayve/'
 
 file_client_args = dict(backend='disk')
 
@@ -203,7 +203,7 @@ data = dict(
     test=dict(pipeline=test_pipeline, classes=class_names, modality=input_modality))
 
 optimizer = dict(
-    type='AdamW', 
+    type='AdamW',
     lr=2e-4,
     paramwise_cfg=dict(
         custom_keys={
@@ -223,3 +223,4 @@ evaluation = dict(interval=2, pipeline=test_pipeline)
 
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 load_from='ckpts/fcos3d.pth'
+
