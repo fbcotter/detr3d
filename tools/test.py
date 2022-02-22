@@ -15,6 +15,7 @@ from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
+import detr3d.mmdet3d_plugin
 
 
 def parse_args():
@@ -123,30 +124,30 @@ def main():
         import_modules_from_strings(**cfg['custom_imports'])
 
     # import modules from plguin/xx, registry will be updated
-    if hasattr(cfg, 'plugin'):
-        if cfg.plugin:
-            import importlib
-            import time
-            if hasattr(cfg, 'plugin_dir'):
-                plugin_dir = cfg.plugin_dir
-                _module_dir = os.path.dirname(plugin_dir)
-                _module_dir = _module_dir.split('/')
-                _module_path = _module_dir[0]
+    #  if hasattr(cfg, 'plugin'):
+        #  if cfg.plugin:
+            #  import importlib
+            #  import time
+            #  if hasattr(cfg, 'plugin_dir'):
+                #  plugin_dir = cfg.plugin_dir
+                #  _module_dir = os.path.dirname(plugin_dir)
+                #  _module_dir = _module_dir.split('/')
+                #  _module_path = _module_dir[0]
 
-                for m in _module_dir[1:]:
-                    _module_path = _module_path + '.' + m
-                print(_module_path)
-                import ipdb; ipdb.set_trace()
+                #  for m in _module_dir[1:]:
+                    #  _module_path = _module_path + '.' + m
+                #  print(_module_path)
+                #  import ipdb; ipdb.set_trace()
+                #  #  plg_lib = importlib.import_module(_module_path)
+            #  else:
+                #  # import dir is the dirpath for the config file
+                #  _module_dir = os.path.dirname(args.config)
+                #  _module_dir = _module_dir.split('/')
+                #  _module_path = _module_dir[0]
+                #  for m in _module_dir[1:]:
+                    #  _module_path = _module_path + '.' + m
+                #  print(_module_path)
                 #  plg_lib = importlib.import_module(_module_path)
-            else:
-                # import dir is the dirpath for the config file
-                _module_dir = os.path.dirname(args.config)
-                _module_dir = _module_dir.split('/')
-                _module_path = _module_dir[0]
-                for m in _module_dir[1:]:
-                    _module_path = _module_path + '.' + m
-                print(_module_path)
-                plg_lib = importlib.import_module(_module_path)
 
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
@@ -183,6 +184,7 @@ def main():
         set_random_seed(args.seed, deterministic=args.deterministic)
 
     # build the dataloader
+    import ipdb; ipdb.set_trace()
     dataset = build_dataset(cfg.data.test)
     data_loader = build_dataloader(
         dataset,

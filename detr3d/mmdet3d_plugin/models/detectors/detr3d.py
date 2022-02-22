@@ -8,7 +8,7 @@ from mmdet.models import DETECTORS
 from mmdet3d.core import bbox3d2result
 from mmdet3d.models.detectors.mvx_two_stage import MVXTwoStageDetector
 from mmdet3d.models import SingleStageMono3DDetector
-from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
+from detr3d.mmdet3d_plugin.models.utils.grid_mask import GridMask
 from mmdet3d.core import (CameraInstance3DBoxes, bbox3d2result, show_multi_modality_result)
 
 

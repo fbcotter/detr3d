@@ -5,18 +5,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import Linear, bias_init_with_prob
 from mmcv.runner import force_fp32, auto_fp16
-                        
+
 from mmdet.core import multi_apply, reduce_mean
 from mmdet.models.utils.transformer import inverse_sigmoid
 from mmdet.models import HEADS
 from mmdet.models.dense_heads import DETRHead
 from mmdet3d.core.bbox.coders import build_bbox_coder
-from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox
+from detr3d.mmdet3d_plugin.core.bbox.util import normalize_bbox
 
 
 @HEADS.register_module()
 class DGCNN3DHead(DETRHead):
-    """Head of DeformDETR3D. 
+    """Head of DeformDETR3D.
     Args:
         with_box_refine (bool): Whether to refine the reference points
             in the decoder. Defaults to False.
@@ -45,13 +45,13 @@ class DGCNN3DHead(DETRHead):
         self.pc_range = self.bbox_coder.pc_range
         self.voxel_size = self.bbox_coder.voxel_size
 
-        self.bev_shape = (int((self.pc_range[3] - self.pc_range[0]) / self.voxel_size[0]), 
+        self.bev_shape = (int((self.pc_range[3] - self.pc_range[0]) / self.voxel_size[0]),
                           int((self.pc_range[4] - self.pc_range[1]) / self.voxel_size[1]))
 
         self.num_cls_fcs = num_cls_fcs - 1
         super(DGCNN3DHead, self).__init__(
             *args, transformer=transformer, **kwargs)
-    
+
 
     def _init_layers(self):
         """Initialize classification branch and regression branch of head."""
@@ -188,14 +188,14 @@ class DGCNN3DHead(DETRHead):
                 'all_cls_scores': outputs_classes,
                 'all_bbox_preds': outputs_coords,
                 'enc_cls_scores': enc_outputs_class,
-                'enc_bbox_preds': enc_outputs_coord.sigmoid(), 
+                'enc_bbox_preds': enc_outputs_coord.sigmoid(),
             }
         else:
             outs = {
                 'all_cls_scores': outputs_classes,
                 'all_bbox_preds': outputs_coords,
                 'enc_cls_scores': None,
-                'enc_bbox_preds': None, 
+                'enc_bbox_preds': None,
             }
         return outs
 
@@ -371,8 +371,8 @@ class DGCNN3DHead(DETRHead):
                     bbox_preds[isnotnan, 8:], normalized_bbox_targets[isnotnan, 8:], bbox_weights[isnotnan, 8:], avg_factor=num_total_pos)
             loss_bbox = loss_bbox + loss_bbox_vel * 0.2
 
-        return loss_cls, loss_bbox 
-    
+        return loss_cls, loss_bbox
+
     @force_fp32(apply_to=('preds_dicts'))
     def loss(self,
              gt_bboxes_list,
@@ -381,7 +381,7 @@ class DGCNN3DHead(DETRHead):
              gt_bboxes_ignore=None):
         """"Loss function.
         Args:
-            
+
             gt_bboxes_list (list[Tensor]): Ground truth bboxes for each image
                 with shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
             gt_labels_list (list[Tensor]): Ground truth class indices for each
@@ -429,7 +429,7 @@ class DGCNN3DHead(DETRHead):
 
         losses_cls, losses_bbox = multi_apply(
             self.loss_single, all_cls_scores, all_bbox_preds,
-            all_gt_bboxes_list, all_gt_labels_list, 
+            all_gt_bboxes_list, all_gt_labels_list,
             all_gt_bboxes_ignore_list)
 
         loss_dict = dict()

@@ -1,6 +1,6 @@
 _base_ = [
-    '../../../mmdetection3d/configs/_base_/datasets/nus-3d.py',
-    '../../../mmdetection3d/configs/_base_/default_runtime.py'
+    'wayve.py',
+    '../../../mmdetection3d/configs/_base_/default_runtime.py',
 ]
 
 plugin=True
@@ -12,7 +12,8 @@ point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 voxel_size = [0.2, 0.2, 8]
 
 img_norm_cfg = dict(
-    mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False)
+    mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False
+)
 # For nuScenes we usually do 10-class detection
 class_names = [
     'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
@@ -154,44 +155,14 @@ db_sampler = dict(
         use_dim=[0, 1, 2, 3, 4],
         file_client_args=file_client_args))
 
-train_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='PhotoMetricDistortionMultiViewImage'),
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_attr_label=False),
-    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectNameFilter', classes=class_names),
-    dict(type='NormalizeMultiviewImage', **img_norm_cfg),
-    dict(type='PadMultiViewImage', size_divisor=32),
-    dict(type='DefaultFormatBundle3D', class_names=class_names),
-    dict(type='Collect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img'])
-]
-test_pipeline = [
-    dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='NormalizeMultiviewImage', **img_norm_cfg),
-    dict(type='PadMultiViewImage', size_divisor=32),
-    dict(
-        type='MultiScaleFlipAug3D',
-        img_scale=(1333, 800),
-        pts_scale_ratio=1,
-        flip=False,
-        transforms=[
-            dict(
-                type='DefaultFormatBundle3D',
-                class_names=class_names,
-                with_label=False),
-            dict(type='Collect3D', keys=['img'])
-        ])
-]
-
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'nuscenes_infos_train.pkl',
-        pipeline=train_pipeline,
+        ann_file=data_root + 'dataset.pkl',
         classes=class_names,
         modality=input_modality,
         test_mode=False,
@@ -199,8 +170,8 @@ data = dict(
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
         box_type_3d='LiDAR'),
-    val=dict(pipeline=test_pipeline, classes=class_names, modality=input_modality),
-    test=dict(pipeline=test_pipeline, classes=class_names, modality=input_modality))
+    val=dict(classes=class_names, modality=input_modality, type=dataset_type),
+    test=dict(classes=class_names, modality=input_modality, type=dataset_type))
 
 optimizer = dict(
     type='AdamW',
@@ -219,7 +190,6 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3)
 total_epochs = 24
-evaluation = dict(interval=2, pipeline=test_pipeline)
 
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
 load_from='ckpts/fcos3d.pth'
