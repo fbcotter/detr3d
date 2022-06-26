@@ -6,6 +6,7 @@ from mmdet3d.core import show_result
 from mmdet3d.core.bbox import DepthInstance3DBoxes
 from mmdet3d.datasets.custom_3d import Custom3DDataset
 from mmdet.datasets import DATASETS
+from mmdet3d.core.bbox import Box3DMode, Coord3DMode, LiDARInstance3DBoxes
 
 
 @DATASETS.register_module()
@@ -43,7 +44,6 @@ class WayveDataset(Custom3DDataset):
                     from lidar to different cameras.
                 - ann_info (dict): Annotation info.
         """
-        import ipdb; ipdb.set_trace()
         info = self.data_infos[index]
         # standard protocal modified from SECOND.Pytorch
         input_dict = dict(
@@ -52,7 +52,9 @@ class WayveDataset(Custom3DDataset):
             sweeps=info['sweeps'],
             timestamp=info['timestamp_us'] / 1e6,
         )
-
+        # For wayve dataset, the cuboids are labelled in the vehicle frame, so we don't need to use the lidar sensor's
+        # pose
+        # However, to make it work with the rest of the code, let's still call it 'lidar2cam'
         if self.modality['use_camera']:
             image_paths = []
             lidar2img_rts = []
@@ -61,25 +63,21 @@ class WayveDataset(Custom3DDataset):
             for cam_type, cam_info in info['cameras'].items():
                 image_paths.append(cam_info['path'])
                 # obtain lidar to image transformation matrix
-                lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
-                lidar2cam_t = cam_info['sensor2lidar_translation'] @ lidar2cam_r.T
-                lidar2cam_rt = np.eye(4)
-                lidar2cam_rt[:3, :3] = lidar2cam_r.T
-                lidar2cam_rt[3, :3] = -lidar2cam_t
-                intrinsic = cam_info['cam_intrinsic']
+                cam2ego = np.array(cam_info['pose'])
+                ego2cam = np.linalg.inv(cam2ego)
+                intrinsic = np.array(cam_info['intrinsics'])
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
-                lidar2img_rt = (viewpad @ lidar2cam_rt.T)
+                lidar2img_rt = (viewpad @ ego2cam)
                 lidar2img_rts.append(lidar2img_rt)
-
                 cam_intrinsics.append(viewpad)
-                lidar2cam_rts.append(lidar2cam_rt.T)
+                lidar2cam_rts.append(ego2cam)
 
             input_dict.update(
                 dict(
                     img_filename=image_paths,
                     lidar2img=lidar2img_rts,
-                    cam_intrinsic=cam_intrinsics,
+                    cam2img=cam_intrinsics,
                     lidar2cam=lidar2cam_rts,
                 ))
 
@@ -90,31 +88,70 @@ class WayveDataset(Custom3DDataset):
         return input_dict
 
     def get_ann_info(self, index):
-        # Use index to get the annos, thus the evalhook could also use this api
         info = self.data_infos[index]
-        if info['annos']['gt_num'] != 0:
-            gt_bboxes_3d = info['annos']['gt_boxes_upright_depth'].astype(
-                np.float32)  # k, 6
-            gt_labels_3d = info['annos']['class'].astype(np.long)
-        else:
-            gt_bboxes_3d = np.zeros((0, 6), dtype=np.float32)
-            gt_labels_3d = np.zeros((0, ), dtype=np.long)
+        # filter out bbox containing no points
+        mask = np.array(info['num_pts']) > 0
+        pos = np.array(info['pos'])[mask]
+        size = np.array(info['size'])[mask]
+        yaw_deg = np.array(info['yaw_deg'])[mask]
+        # Convert yaw to lidar box format - for us it's
+        #
+        #                             up z    x front (yaw_deg=0)
+        #                               ^   ^
+        #                               |  /
+        #                               | /
+        #      (yaw=-pi) left y <------ 0 -------- (yaw_deg=-90)
+        yaw = yaw_deg * np.pi / 180
+        yaw = -yaw - np.pi / 2
+        gt_bboxes_3d = np.concatenate([pos, size, yaw[:, None]], axis=1)
+        gt_names_3d = np.array(info['labels'])[mask]
+        gt_labels_3d = []
+        for cat in gt_names_3d:
+            if cat in self.CLASSES:
+                gt_labels_3d.append(self.CLASSES.index(cat))
+            else:
+                gt_labels_3d.append(-1)
+        gt_labels_3d = np.array(gt_labels_3d)
 
-        # to target box structure
-        gt_bboxes_3d = DepthInstance3DBoxes(
+        # the wayve box center is [0.5, 0.5, 0.5], we change it to be
+        # the same as KITTI (0.5, 0.5, 0)
+        gt_bboxes_3d = LiDARInstance3DBoxes(
             gt_bboxes_3d,
             box_dim=gt_bboxes_3d.shape[-1],
-            with_yaw=False,
-            origin=(0.5, 0.5, 0.5)).convert_to(self.box_mode_3d)
-
-        pts_instance_mask_path = osp.join(self.data_root,
-                                          info['pts_instance_mask_path'])
-        pts_semantic_mask_path = osp.join(self.data_root,
-                                          info['pts_semantic_mask_path'])
+            origin=(0.5, 0.5, 0.5)
+        ).convert_to(self.box_mode_3d)
 
         anns_results = dict(
             gt_bboxes_3d=gt_bboxes_3d,
             gt_labels_3d=gt_labels_3d,
-            pts_instance_mask_path=pts_instance_mask_path,
-            pts_semantic_mask_path=pts_semantic_mask_path)
+            gt_names=gt_names_3d
+        )
         return anns_results
+
+    def show(self, results, out_dir, show=True, pipeline=None):
+        """Results visualization.
+
+        Args:
+            results (list[dict]): List of bounding boxes results.
+            out_dir (str): Output directory of visualization result.
+            show (bool): Visualize the results online.
+            pipeline (list[dict], optional): raw data loading for showing.
+                Default: None.
+        """
+        assert out_dir is not None, 'Expect out_dir, got none.'
+        pipeline = self._get_pipeline(pipeline)
+        for i, result in enumerate(results):
+            if 'pts_bbox' in result.keys():
+                result = result['pts_bbox']
+            data_info = self.data_infos[i]
+            pts_path = data_info['lidar_path']
+            file_name = osp.split(pts_path)[-1].split('.')[0]
+            points = self._extract_data(i, pipeline, 'points').numpy()
+            # for now we convert points into depth mode
+            points = Coord3DMode.convert_point(points, Coord3DMode.LIDAR, Coord3DMode.DEPTH)
+            inds = result['scores_3d'] > 0.1
+            gt_bboxes = self.get_ann_info(i)['gt_bboxes_3d'].tensor.numpy()
+            show_gt_bboxes = Box3DMode.convert(gt_bboxes, Box3DMode.LIDAR, Box3DMode.DEPTH)
+            pred_bboxes = result['boxes_3d'][inds].tensor.numpy()
+            show_pred_bboxes = Box3DMode.convert(pred_bboxes, Box3DMode.LIDAR, Box3DMode.DEPTH)
+            show_result(points, show_gt_bboxes, show_pred_bboxes, out_dir, file_name, show)

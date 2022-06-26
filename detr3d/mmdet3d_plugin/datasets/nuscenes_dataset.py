@@ -29,7 +29,6 @@ class CustomNuScenesDataset(NuScenesDataset):
                     from lidar to different cameras.
                 - ann_info (dict): Annotation info.
         """
-        import ipdb; ipdb.set_trace()
         info = self.data_infos[index]
         # standard protocal modified from SECOND.Pytorch
         input_dict = dict(
@@ -66,7 +65,7 @@ class CustomNuScenesDataset(NuScenesDataset):
                 dict(
                     img_filename=image_paths,
                     lidar2img=lidar2img_rts,
-                    cam_intrinsic=cam_intrinsics,
+                    cam2img=cam_intrinsics,
                     lidar2cam=lidar2cam_rts,
                 ))
 

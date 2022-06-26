@@ -85,6 +85,13 @@ def parse_args():
         choices=['none', 'pytorch', 'slurm', 'mpi'],
         default='none',
         help='job launcher')
+    parser.add_argument(
+        '--score_thr',
+        type=float,
+        default=0.1,
+        help='Threshold for visualizing the detections',
+    )
+
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
@@ -184,14 +191,14 @@ def main():
         set_random_seed(args.seed, deterministic=args.deterministic)
 
     # build the dataloader
-    import ipdb; ipdb.set_trace()
     dataset = build_dataset(cfg.data.test)
     data_loader = build_dataloader(
         dataset,
         samples_per_gpu=samples_per_gpu,
         workers_per_gpu=cfg.data.workers_per_gpu,
         dist=distributed,
-        shuffle=False)
+        shuffle=False
+    )
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
@@ -217,7 +224,7 @@ def main():
 
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)
+        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir, args.score_thr)
     else:
         model = MMDistributedDataParallel(
             model.cuda(),

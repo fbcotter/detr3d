@@ -45,7 +45,7 @@ test_pipeline = [
     dict(type='PadMultiViewImage', size_divisor=32),
     dict(
         type='MultiScaleFlipAug3D',
-        img_scale=(1333, 800),
+        img_scale=(960, 600),
         pts_scale_ratio=1,
         flip=False,
         transforms=[
@@ -77,7 +77,7 @@ eval_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=4,
+    samples_per_gpu=2,
     workers_per_gpu=4,
     train=dict(
         type=dataset_type,

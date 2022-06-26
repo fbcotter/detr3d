@@ -10,6 +10,7 @@ from mmdet3d.models.detectors.mvx_two_stage import MVXTwoStageDetector
 from mmdet3d.models import SingleStageMono3DDetector
 from detr3d.mmdet3d_plugin.models.utils.grid_mask import GridMask
 from mmdet3d.core import (CameraInstance3DBoxes, bbox3d2result, show_multi_modality_result)
+from mmdet3d.core.bbox import Box3DMode
 
 
 @DETECTORS.register_module()
@@ -240,31 +241,47 @@ class Detr3D(MVXTwoStageDetector):
         """
         for batch_id in range(len(result)):
             if isinstance(data['img_metas'][0], DC):
-                img_filename = data['img_metas'][0]._data[0][batch_id][
-                    'filename']
-                cam2img = data['img_metas'][0]._data[0][batch_id]['cam2img']
+                img_filename = data['img_metas'][0]._data[0][batch_id]['filename']
+                lidar2img = data['img_metas'][0]._data[0][batch_id]['lidar2img']
+                #  cam2img = data['img_metas'][0]._data[0][batch_id]['cam2img']
             elif mmcv.is_list_of(data['img_metas'][0], dict):
                 img_filename = data['img_metas'][0][batch_id]['filename']
-                cam2img = data['img_metas'][0][batch_id]['cam2img']
+                lidar2img = data['img_metas'][0][batch_id]['lidar2img']
+                #  cam2img = data['img_metas'][0][batch_id]['cam2img']
             else:
                 ValueError(
-                    f"Unsupported data type {type(data['img_metas'][0])} "
-                    f'for visualization!')
-            img = mmcv.imread(img_filename)
-            file_name = osp.split(img_filename)[-1].split('.')[0]
+                    f"Unsupported data type {type(data['img_metas'][0])} for visualization!"
+                )
+
+            for i, file in enumerate(img_filename):
+                if 'front-forward' in file or '__CAM_FRONT__' in file:
+                    img = mmcv.imread(file)
+                    file_name = osp.split(file)[-1].split('.')[0]
+                    lidar2img = lidar2img[i]
+                    break
 
             assert out_dir is not None, 'Expect out_dir, got none.'
 
-            pred_bboxes = result[batch_id]['img_bbox']['boxes_3d']
-            assert isinstance(pred_bboxes, CameraInstance3DBoxes), \
-                f'unsupported predicted bbox type {type(pred_bboxes)}'
+            pred_bboxes = result[batch_id]['pts_bbox']['boxes_3d']
+            scores = result[batch_id]['pts_bbox']['scores_3d']
+            if score_thr is None:
+                score_thr = 0.05
+            mask = scores > score_thr
+            pred_bboxes = pred_bboxes[mask]
+            #  pred_bboxes = pred_bboxes.convert_to(Box3DMode.CAM)
+            #  # Mask out cuboids behind the camera
+            #  mask = pred_bboxes.center[:, 2] > 0
+            #  pred_bboxes = pred_bboxes[mask]
+            #  assert isinstance(pred_bboxes, CameraInstance3DBoxes), \
+                #  f'unsupported predicted bbox type {type(pred_bboxes)}'
 
             show_multi_modality_result(
                 img,
                 None,
                 pred_bboxes,
-                cam2img,
+                lidar2img,
                 out_dir,
                 file_name,
-                'camera',
-                show=show)
+                'lidar',
+                show=show
+            )
